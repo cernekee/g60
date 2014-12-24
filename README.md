@@ -57,6 +57,9 @@ like:
 
     Bus 002 Device 007: ID 04c5:124a Fujitsu, Ltd
 
+In production you probably want to run the G60 software as an unprivileged
+user; instructions can be found at the top of <code>55-g60-cuse.rules</code>.
+
 Credits
 -------
 
