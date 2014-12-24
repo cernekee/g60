@@ -22,8 +22,14 @@
 #include <errno.h>
 
 #define MAX_XFER		0x1000
+#define TIMEOUT_MS		200
 
-static void *cusexmp_buf;
+#define G60_VID			0x04c5
+#define G60_PID			0x124a
+#define BULK_EP_IN		0x81
+#define BULK_EP_OUT		0x02
+
+static libusb_device_handle *devh;
 
 static const char *usage =
 "usage: cusexmp [options]\n"
@@ -43,24 +49,41 @@ static void cusexmp_open(fuse_req_t req, struct fuse_file_info *fi)
 static void cusexmp_read(fuse_req_t req, size_t size, off_t off,
 			 struct fuse_file_info *fi)
 {
+	char buf[MAX_XFER];
+	int ret, actual;
+
 	if (size > MAX_XFER)
 		size = MAX_XFER;
-	fuse_reply_buf(req, cusexmp_buf, size);
+
+	ret = libusb_bulk_transfer(devh, BULK_EP_IN, buf, size,
+				 &actual, TIMEOUT_MS);
+	if (ret == LIBUSB_ERROR_TIMEOUT)
+		actual = 0;
+	else if (ret != LIBUSB_SUCCESS) {
+		fuse_reply_err(req, EIO);
+		return;
+	}
+
+	fuse_reply_buf(req, buf, actual);
 }
 
 static void cusexmp_write(fuse_req_t req, const char *buf, size_t size,
 			  off_t off, struct fuse_file_info *fi)
 {
-	if (!cusexmp_buf)
-		cusexmp_buf = calloc(1, MAX_XFER);
-	if (!cusexmp_buf)
-		abort();
+	int actual;
+
 	if (size > MAX_XFER) {
+		printf("write err\n");
 		fuse_reply_err(req, ENOSPC);
 		return;
 	}
-	memcpy(cusexmp_buf, buf, size);
-	fuse_reply_write(req, size);
+
+	if (libusb_bulk_transfer(devh, BULK_EP_OUT, (char *)buf, size,
+				 &actual, TIMEOUT_MS) != LIBUSB_SUCCESS) {
+		fuse_reply_err(req, EIO);
+		return;
+	}
+	fuse_reply_write(req, actual);
 }
 
 struct cusexmp_param {
@@ -105,6 +128,36 @@ static const struct cuse_lowlevel_ops cusexmp_clop = {
 	.write		= cusexmp_write,
 };
 
+static int open_usb(void)
+{
+	libusb_init(NULL);
+
+	devh = libusb_open_device_with_vid_pid(NULL, G60_VID, G60_PID);
+	if (!devh) {
+		printf("could not find device\n");
+		goto err;
+	}
+	libusb_detach_kernel_driver(devh, 0);
+	libusb_reset_device(devh);
+
+	if (libusb_set_configuration(devh, 1) != LIBUSB_SUCCESS) {
+		printf("could not set configuration\n");
+		goto err;
+	}
+
+	if (libusb_claim_interface(devh, 0) != LIBUSB_SUCCESS) {
+		printf("could not claim interface\n");
+		goto err;
+	}
+	return 0;
+
+err:
+	if (devh)
+		libusb_close(devh);
+	libusb_exit(NULL);
+	return -ENOENT;
+}
+
 int main(int argc, char **argv)
 {
 	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
@@ -122,7 +175,9 @@ int main(int argc, char **argv)
 	ci.dev_minor = param.minor;
 	ci.dev_info_argc = 1;
 	ci.dev_info_argv = &dev_info_argv;
-	ci.flags = CUSE_UNRESTRICTED_IOCTL;
+
+	if (open_usb() < 0)
+		return 1;
 
 	return cuse_lowlevel_main(args.argc, args.argv, &ci, &cusexmp_clop,
 				  NULL);
