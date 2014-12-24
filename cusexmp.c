@@ -20,8 +20,6 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "fioc.h"
-
 static void *cusexmp_buf;
 static size_t cusexmp_size;
 
@@ -94,127 +92,6 @@ static void cusexmp_write(fuse_req_t req, const char *buf, size_t size,
 	fuse_reply_write(req, size);
 }
 
-static void fioc_do_rw(fuse_req_t req, void *addr, const void *in_buf,
-		       size_t in_bufsz, size_t out_bufsz, int is_read)
-{
-	const struct fioc_rw_arg *arg;
-	struct iovec in_iov[2], out_iov[3], iov[3];
-	size_t cur_size;
-
-	/* read in arg */
-	in_iov[0].iov_base = addr;
-	in_iov[0].iov_len = sizeof(*arg);
-	if (!in_bufsz) {
-		fuse_reply_ioctl_retry(req, in_iov, 1, NULL, 0);
-		return;
-	}
-	arg = in_buf;
-	in_buf += sizeof(*arg);
-	in_bufsz -= sizeof(*arg);
-
-	/* prepare size outputs */
-	out_iov[0].iov_base =
-		addr + (unsigned long)&(((struct fioc_rw_arg *)0)->prev_size);
-	out_iov[0].iov_len = sizeof(arg->prev_size);
-
-	out_iov[1].iov_base =
-		addr + (unsigned long)&(((struct fioc_rw_arg *)0)->new_size);
-	out_iov[1].iov_len = sizeof(arg->new_size);
-
-	/* prepare client buf */
-	if (is_read) {
-		out_iov[2].iov_base = arg->buf;
-		out_iov[2].iov_len = arg->size;
-		if (!out_bufsz) {
-			fuse_reply_ioctl_retry(req, in_iov, 1, out_iov, 3);
-			return;
-		}
-	} else {
-		in_iov[1].iov_base = arg->buf;
-		in_iov[1].iov_len = arg->size;
-		if (arg->size && !in_bufsz) {
-			fuse_reply_ioctl_retry(req, in_iov, 2, out_iov, 2);
-			return;
-		}
-	}
-
-	/* we're all set */
-	cur_size = cusexmp_size;
-	iov[0].iov_base = &cur_size;
-	iov[0].iov_len = sizeof(cur_size);
-
-	iov[1].iov_base = &cusexmp_size;
-	iov[1].iov_len = sizeof(cusexmp_size);
-
-	if (is_read) {
-		size_t off = arg->offset;
-		size_t size = arg->size;
-
-		if (off >= cusexmp_size)
-			off = cusexmp_size;
-		if (size > cusexmp_size - off)
-			size = cusexmp_size - off;
-
-		iov[2].iov_base = cusexmp_buf + off;
-		iov[2].iov_len = size;
-		fuse_reply_ioctl_iov(req, size, iov, 3);
-	} else {
-		if (cusexmp_expand(arg->offset + in_bufsz)) {
-			fuse_reply_err(req, ENOMEM);
-			return;
-		}
-
-		memcpy(cusexmp_buf + arg->offset, in_buf, in_bufsz);
-		fuse_reply_ioctl_iov(req, in_bufsz, iov, 2);
-	}
-}
-
-static void cusexmp_ioctl(fuse_req_t req, int cmd, void *arg,
-			  struct fuse_file_info *fi, unsigned flags,
-			  const void *in_buf, size_t in_bufsz, size_t out_bufsz)
-{
-	int is_read = 0;
-
-	(void)fi;
-
-	if (flags & FUSE_IOCTL_COMPAT) {
-		fuse_reply_err(req, ENOSYS);
-		return;
-	}
-
-	switch (cmd) {
-	case FIOC_GET_SIZE:
-		if (!out_bufsz) {
-			struct iovec iov = { arg, sizeof(size_t) };
-
-			fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
-		} else
-			fuse_reply_ioctl(req, 0, &cusexmp_size,
-					 sizeof(cusexmp_size));
-		break;
-
-	case FIOC_SET_SIZE:
-		if (!in_bufsz) {
-			struct iovec iov = { arg, sizeof(size_t) };
-
-			fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
-		} else {
-			cusexmp_resize(*(size_t *)in_buf);
-			fuse_reply_ioctl(req, 0, NULL, 0);
-		}
-		break;
-
-	case FIOC_READ:
-		is_read = 1;
-	case FIOC_WRITE:
-		fioc_do_rw(req, arg, in_buf, in_bufsz, out_bufsz, is_read);
-		break;
-
-	default:
-		fuse_reply_err(req, EINVAL);
-	}
-}
-
 struct cusexmp_param {
 	unsigned		major;
 	unsigned		minor;
@@ -258,7 +135,6 @@ static const struct cuse_lowlevel_ops cusexmp_clop = {
 	.open		= cusexmp_open,
 	.read		= cusexmp_read,
 	.write		= cusexmp_write,
-	.ioctl		= cusexmp_ioctl,
 };
 
 int main(int argc, char **argv)
