@@ -13,6 +13,7 @@
 
 #include <cuse_lowlevel.h>
 #include <fuse_opt.h>
+#include <libusb.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>

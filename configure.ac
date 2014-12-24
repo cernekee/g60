@@ -46,7 +46,7 @@ AC_CONFIG_FILES([Makefile])
 
 # Checks for libraries.
 PKG_CHECK_MODULES([FUSE], [fuse])
-PKG_CHECK_MODULES([USB], [libusb])
+PKG_CHECK_MODULES([USB], [libusb-1.0])
 
 # Checks for header files.
 AC_CHECK_HEADERS([stddef.h stdlib.h string.h unistd.h])
