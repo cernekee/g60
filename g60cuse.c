@@ -30,6 +30,7 @@
 #define BULK_EP_OUT		0x02
 
 static libusb_device_handle *devh;
+static int refcnt;
 static int trace_enabled;
 
 static const char *usage =
@@ -42,11 +43,6 @@ static const char *usage =
 "    --min=MIN|-m MIN      device minor number\n"
 "    --name=NAME|-n NAME   device name (mandatory)\n"
 "\n";
-
-static void g60cuse_open(fuse_req_t req, struct fuse_file_info *fi)
-{
-	fuse_reply_open(req, fi);
-}
 
 #define LINESZ			16
 
@@ -78,6 +74,62 @@ static void trace_hex(const char *pfx, const unsigned char *data, int len)
 		}
 		printf("\n");
 	}
+}
+
+static int usb_open(void)
+{
+	libusb_init(NULL);
+
+	devh = libusb_open_device_with_vid_pid(NULL, G60_VID, G60_PID);
+	if (!devh) {
+		printf("could not find device\n");
+		goto err;
+	}
+	libusb_detach_kernel_driver(devh, 0);
+	return 0;
+
+err:
+	if (devh)
+		libusb_close(devh);
+	libusb_exit(NULL);
+	return -ENOENT;
+}
+
+static void usb_reset(void)
+{
+	libusb_reset_device(devh);
+
+	if (trace_enabled)
+		printf("USB: RESET\n");
+}
+
+static void g60cuse_open(fuse_req_t req, struct fuse_file_info *fi)
+{
+	if (++refcnt == 1) {
+		usb_reset();
+		if (libusb_set_configuration(devh, 1) != LIBUSB_SUCCESS) {
+			printf("could not set configuration\n");
+			goto err;
+		}
+
+		if (libusb_claim_interface(devh, 0) != LIBUSB_SUCCESS) {
+			printf("could not claim interface\n");
+			goto err;
+		}
+	}
+
+	fuse_reply_open(req, fi);
+	return;
+
+err:
+	--refcnt;
+	fuse_reply_err(req, EIO);
+}
+
+static void g60cuse_release(fuse_req_t req, struct fuse_file_info *fi)
+{
+	--refcnt;
+	fuse_reply_err(req, 0);
 }
 
 static void g60cuse_read(fuse_req_t req, size_t size, off_t off,
@@ -165,39 +217,10 @@ static int g60cuse_process_arg(void *data, const char *arg, int key,
 
 static const struct cuse_lowlevel_ops g60cuse_clop = {
 	.open		= g60cuse_open,
+	.release	= g60cuse_release,
 	.read		= g60cuse_read,
 	.write		= g60cuse_write,
 };
-
-static int open_usb(void)
-{
-	libusb_init(NULL);
-
-	devh = libusb_open_device_with_vid_pid(NULL, G60_VID, G60_PID);
-	if (!devh) {
-		printf("could not find device\n");
-		goto err;
-	}
-	libusb_detach_kernel_driver(devh, 0);
-	libusb_reset_device(devh);
-
-	if (libusb_set_configuration(devh, 1) != LIBUSB_SUCCESS) {
-		printf("could not set configuration\n");
-		goto err;
-	}
-
-	if (libusb_claim_interface(devh, 0) != LIBUSB_SUCCESS) {
-		printf("could not claim interface\n");
-		goto err;
-	}
-	return 0;
-
-err:
-	if (devh)
-		libusb_close(devh);
-	libusb_exit(NULL);
-	return -ENOENT;
-}
 
 int main(int argc, char **argv)
 {
@@ -217,7 +240,7 @@ int main(int argc, char **argv)
 	ci.dev_info_argc = 1;
 	ci.dev_info_argv = &dev_info_argv;
 
-	if (open_usb() < 0)
+	if (usb_open() < 0)
 		return 1;
 
 	return cuse_lowlevel_main(args.argc, args.argv, &ci, &g60cuse_clop,
