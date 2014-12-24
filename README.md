@@ -1,10 +1,10 @@
 G60 Linux support
 =================
 
-This program replaces "g60.ko" shipped with the Fujitsu G60 SDK.  g60.ko
-is a simple character device driver that proxies USB bulk transfers.  We
-can do the same thing in userland with libusb, avoiding the need for
-kernel dependencies and all of the complications they cause.
+This program replaces <code>g60.ko</code> shipped with the Fujitsu G60 SDK.
+<code>g60.ko</code> is a simple character device driver that proxies USB
+bulk transfers.  We can do the same thing in userland with libusb, avoiding
+the need for kernel dependencies and all of the complications they cause.
 
 g60cuse uses CUSE to create a fully functional <code>/dev/g60</code> node,
 so that the existing Fujitsu software (F\_G60DP2.exe and F\_G60DP1.so) can
@@ -15,18 +15,26 @@ Compiling
 
 Prerequisites:
 
- * gcc/make/etc. (yum groupinstall "Development Tools")
- * libusb 1.0 (yum install libusb1-devel)
- * libfuse (yum install fuse-devel)
- * autotools (yum install autoconf automake)
+ * gcc/make/etc.
+ * libusb 1.0 (will not work with the 0.1 API)
+ * libfuse
+ * autotools, git (for building from GitHub)
 
 This was originally tested on Fedora 13, as that is the distribution targeted
 by the G60 SDK.  The long term goal is to be able to use the G60 with any
-reasonably modern x86 Linux distribution.
+reasonably modern x86 Linux distribution.  On Fedora use:
+
+    yum groupinstall "Development Tools"
+    yum install libusb1-devel fuse-devel autoconf automake git-all
+
+On Debian/Ubuntu use:
+
+    apt-get install build-essential libfuse-dev libusb-1.0-0-dev autoconf automake git
 
 Build commands:
 
     git clone git://github.com/cernekee/g60
+    cd g60
     ./autogen.sh
     ./configure
     make
