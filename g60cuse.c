@@ -14,6 +14,7 @@
 #include <cuse_lowlevel.h>
 #include <fuse_opt.h>
 #include <libusb.h>
+#include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,12 +31,14 @@
 #define BULK_EP_OUT		0x02
 
 static libusb_device_handle *devh;
+static int trace_enabled;
 
 static const char *usage =
 "usage: cusexmp [options]\n"
 "\n"
 "options:\n"
 "    --help|-h             print this help message\n"
+"    --trace|-t            print hex trace of USB activity\n"
 "    --maj=MAJ|-M MAJ      device major number\n"
 "    --min=MIN|-m MIN      device minor number\n"
 "    --name=NAME|-n NAME   device name (mandatory)\n"
@@ -44,6 +47,38 @@ static const char *usage =
 static void cusexmp_open(fuse_req_t req, struct fuse_file_info *fi)
 {
 	fuse_reply_open(req, fi);
+}
+
+#define LINESZ			16
+
+static void trace_hex(const char *pfx, const unsigned char *data, int len)
+{
+	if (!trace_enabled)
+		return;
+
+	for (; len > 0; len -= LINESZ, data += LINESZ) {
+		int i;
+
+		printf("%s", pfx);
+		for (i = 0; i < LINESZ; i++) {
+			if (i >= len)
+				printf("   ");
+			else
+				printf(" %02x", data[i]);
+		}
+
+		printf("   ");
+
+		for (i = 0; i < LINESZ; i++) {
+			if (i >= len)
+				printf(" ");
+			else
+				printf("%c",
+				       (isgraph(data[i]) || data[i] == ' ') ?
+				       data[i] : '.');
+		}
+		printf("\n");
+	}
 }
 
 static void cusexmp_read(fuse_req_t req, size_t size, off_t off,
@@ -64,6 +99,7 @@ static void cusexmp_read(fuse_req_t req, size_t size, off_t off,
 		return;
 	}
 
+	trace_hex("USB>", buf, actual);
 	fuse_reply_buf(req, buf, actual);
 }
 
@@ -78,6 +114,7 @@ static void cusexmp_write(fuse_req_t req, const char *buf, size_t size,
 		return;
 	}
 
+	trace_hex("USB<", buf, size);
 	if (libusb_bulk_transfer(devh, BULK_EP_OUT, (char *)buf, size,
 				 &actual, TIMEOUT_MS) != LIBUSB_SUCCESS) {
 		fuse_reply_err(req, EIO);
@@ -101,6 +138,8 @@ static const struct fuse_opt cusexmp_opts[] = {
 	CUSEXMP_OPT("--min=%u",		minor),
 	FUSE_OPT_KEY("-h",		0),
 	FUSE_OPT_KEY("--help",		0),
+	FUSE_OPT_KEY("-t",		1),
+	FUSE_OPT_KEY("--trace",		1),
 	FUSE_OPT_END
 };
 
@@ -117,6 +156,9 @@ static int cusexmp_process_arg(void *data, const char *arg, int key,
 		param->is_help = 1;
 		fprintf(stderr, "%s", usage);
 		return fuse_opt_add_arg(outargs, "-ho");
+	case 1:
+		trace_enabled = 1;
+		return 0;
 	default:
 		return 1;
 	}
