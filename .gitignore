@@ -1,0 +1,14 @@
+.deps/
+.*.sw*
+Makefile
+Makefile.in
+aclocal.m4
+build-aux/
+config.h
+config.h.in
+config.log
+config.status
+configure
+g60cuse
+*.o
+stamp-h1
