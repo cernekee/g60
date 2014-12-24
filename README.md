@@ -43,6 +43,12 @@ This starts g60cuse in the foreground, with USB tracing enabled:
 
 Then run the G60 sample programs or applications.
 
+If it cannot find the G60 device, run <code>lsusb</code> (from the
+<code>usbutils</code> package) and ensure that you see a line that looks
+like:
+
+    Bus 002 Device 007: ID 04c5:124a Fujitsu, Ltd
+
 Credits
 -------
 
