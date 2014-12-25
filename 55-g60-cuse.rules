@@ -1,13 +1,18 @@
 # udev rules for Fujitsu G60 to allow non-root operation
 #
 # 1) Copy this file to /etc/udev/rules.d/
-# 2) Add the G60 user to group "dialout"
-# 3) "chown -R USER /usr/local/G60U" to change file ownership
-# 4) "chmod -R go-w /usr/local/G60U" to fix perms
+# 2) Create a dedicated "g60cuse" user to run g60cuse.  This user will have the
+#    ability to create new nodes under /dev so be careful!
+# 3) "chown -R USERNAME /usr/local/G60U" to allow writing to the log/settings
+#    files.  USERNAME is the account that will be calling the G60 APIs.  Do
+#    not reuse "g60cuse" for this purpose.
+# 4) "chmod -R go-w /usr/local/G60U" to fix perms.
 
 # make the /dev/g60 CUSE device node owned by group "dialout", similar
 # to /dev/ttyS0
 KERNEL=="g60", GROUP="dialout", MODE="0660"
 
-# also let "dialout" control the associated USB device
-SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="124a", MODE="0660", GROUP="dialout"
+# let the "g60cuse" user talk to our USB device and create device nodes via
+# CUSE
+SUBSYSTEM=="usb", ATTR{idVendor}=="04c5", ATTR{idProduct}=="124a", MODE="0660", OWNER="g60cuse"
+KERNEL=="cuse", OWNER="g60cuse", MODE="0600"
