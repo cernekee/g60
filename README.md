@@ -29,7 +29,7 @@ reasonably modern x86 Linux distribution.  On Fedora use:
 
 On Debian/Ubuntu use:
 
-    apt-get install build-essential libfuse-dev libusb-1.0-0-dev autoconf automake git
+    apt-get install build-essential libfuse-dev libusb-1.0-0-dev autoconf automake pkg-config git
 
 Build commands:
 
