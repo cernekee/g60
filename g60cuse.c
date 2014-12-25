@@ -26,6 +26,7 @@
 
 #define G60_VID			0x04c5
 #define G60_PID			0x124a
+#define G60_INTF		0x00
 #define BULK_EP_IN		0x81
 #define BULK_EP_OUT		0x02
 
@@ -85,7 +86,7 @@ static int usb_open(void)
 		printf("could not find device\n");
 		goto err;
 	}
-	libusb_detach_kernel_driver(devh, 0);
+	libusb_detach_kernel_driver(devh, G60_INTF);
 	return 0;
 
 err:
@@ -112,7 +113,7 @@ static void g60cuse_open(fuse_req_t req, struct fuse_file_info *fi)
 			goto err;
 		}
 
-		if (libusb_claim_interface(devh, 0) != LIBUSB_SUCCESS) {
+		if (libusb_claim_interface(devh, G60_INTF) != LIBUSB_SUCCESS) {
 			printf("could not claim interface\n");
 			goto err;
 		}
