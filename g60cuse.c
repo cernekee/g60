@@ -130,6 +130,7 @@ err:
 static void g60cuse_release(fuse_req_t req, struct fuse_file_info *fi)
 {
 	--refcnt;
+	libusb_release_interface(devh, G60_INTF);
 	fuse_reply_err(req, 0);
 }
 
